@@ -1,0 +1,21 @@
+# first attempt at an environment.yaml file for the omds project so that
+# conda can recreate the environment systematically
+#
+# call with
+# (base) ... % conda env create -f environment.yaml
+#
+# remove with
+# (base) ... % conda remove --name ocrtesting --all
+#
+# update environment and remove unused dependencies with
+# (base) ... % conda env update -f environment.yaml --prune 
+#
+# Hint: make sure all keys use spaces not tabs. Check for \t if there is a conda error.
+---
+name: ocrtesting
+dependencies:
+    - python=3.11
+    - numpy
+    - pyyaml
+    - pip
+    - pip:

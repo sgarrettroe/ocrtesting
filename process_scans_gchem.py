@@ -108,9 +108,13 @@ def process_expected(batch_of_files) -> dict:
             if key - 1 in pageassdict:
                 if pageassdict[key - 1] != expected_dict[key - 1]:
                     flag_ok_test1 = False
+                    logging.debug(
+                        f'key-1: found {pageassdict[key - 1]} expected {expected_dict[key - 1]}')
             if key + 1 in pageassdict:
                 if pageassdict[key + 1] != expected_dict[key + 1]:
                     flag_ok_test2 = False
+                    logging.debug(
+                        f'key+1: found {pageassdict[key + 1]} expected {expected_dict[key + 1]}')
             flag_ok = flag_ok_test1 and flag_ok_test2
             if flag_ok:
                 logging.debug(
@@ -276,7 +280,6 @@ def add_annotations_to_pdf(pdfin, file_name_in, assessment_name,
                         pdfmarks_file_name, file_name_in])
 
     return x
-
 
 def cleanup(pdfin):
     logging.info('\t...cleaning up')

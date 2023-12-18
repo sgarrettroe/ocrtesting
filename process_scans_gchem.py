@@ -6,6 +6,8 @@ from pathlib import Path  # for sorting paths below (supercedes glob)
 import logging
 import re
 from string import Template  # used in annotations
+from pprint import pprint
+
 #import yaml  ## why not working!?!?! ToDo: fix pyyaml install
 
 # set up logger
@@ -44,8 +46,8 @@ def cropcorner(pdfin) -> subprocess.CompletedProcess[bytes]:
     # offsetstr = '-45 -60'
 
     # third try title
-    sizestr = '1700x500'
-    offsetstr = '-45 -700'
+    sizestr = '1800x700'
+    offsetstr = '-45 -675'
 
     x = subprocess.run(
         [gscmd, '-q', '-o', 'crop_' + pdfin, '-sDEVICE=pdfwrite',
@@ -101,32 +103,52 @@ def process_expected(batch_of_files) -> dict:
 
     # look for errors
     for key, val in pageassdict.items():
-        if val is None:
-            # we're guessing it is probably ok
-            flag_ok_test1 = True
-            flag_ok_test2 = True
-            if key - 1 in pageassdict:
-                if pageassdict[key - 1] != expected_dict[key - 1]:
-                    flag_ok_test1 = False
+        if val == expected_dict[key]:
+            logging.debug(f'expected {expected_dict[key]}, found {val}  -- OK')
+        else:
+            logging.debug(f'expected {expected_dict[key]}, found {val}  -- FAIL')
+            if val is None:
+                # we're guessing it is probably ok
+                flag_ok_test1 = True
+                flag_ok_test2 = True
+                if key - 1 in pageassdict:
+                    if pageassdict[key - 1] != expected_dict[key - 1]:
+                        flag_ok_test1 = False
+                        logging.debug(
+                            f'key-1: found {pageassdict[key - 1]} expected {expected_dict[key - 1]}')
+                if key + 1 in pageassdict:
+                    if pageassdict[key + 1] != expected_dict[key + 1]:
+                        flag_ok_test2 = False
+                        logging.debug(
+                            f'key+1: found {pageassdict[key + 1]} expected {expected_dict[key + 1]}')
+                flag_ok = flag_ok_test1 and flag_ok_test2
+                if flag_ok:
                     logging.debug(
-                        f'key-1: found {pageassdict[key - 1]} expected {expected_dict[key - 1]}')
-            if key + 1 in pageassdict:
-                if pageassdict[key + 1] != expected_dict[key + 1]:
-                    flag_ok_test2 = False
-                    logging.debug(
-                        f'key+1: found {pageassdict[key + 1]} expected {expected_dict[key + 1]}')
-            flag_ok = flag_ok_test1 and flag_ok_test2
-            if flag_ok:
-                logging.debug(
-                    f'Guessing that page {key} is assessment {expected_dict[key]}')
-                pageassdict[key] = expected_dict[key]
+                        f'Guessing that page {key} is assessment {expected_dict[key]}')
+                    pageassdict[key] = expected_dict[key]
+                else:
+                    pageassdict[key] = get_assessment_from_user(key,
+                                                                expected_dict[key])
             else:
                 pageassdict[key] = get_assessment_from_user(key,
                                                             expected_dict[key])
 
-    logging.debug(pageassdict)
+    # logging.debug(pprint(pageassdict))
     flipped = flip_dictionary(pageassdict)
-    logging.debug(flipped)
+    logging.debug("FLIPPED DICTIONARY")
+    logging.debug(pprint(flipped))
+
+    def check(d:dict):
+        """check length of the page assessment dictionary so they're all the same length"""
+
+        for key, item in d.items():
+            logging.debug(f'{key}:{item} --- {len(item)}')
+
+        l = [len(v)/ASSLIST.count(k) for k, v in d.items()]
+        if not l.count(l[0]) == len(l):
+            raise ValueError('Number of submissions not equal')
+
+    check(flipped)
 
     return flipped
 
@@ -161,7 +183,7 @@ def get_assessment_from_user(page, expected_assessment=None) -> str:
     assessment_string = []
     while not assessment_string:
         # val = input('What is the assessment for:\n' + ocrtext +'\n:\n')
-        val = input('What is the assessment number:\n')
+        val = input(f'What is the assessment number [{expected_assessment}]:\n') or expected_assessment
         if val in ASSLIST:
             assessment_string = val
         else:

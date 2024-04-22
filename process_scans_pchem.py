@@ -6,6 +6,8 @@ import logging
 import re  # regular expressions
 from string import Template  # used in annotations
 from subprocess import CompletedProcess
+
+import numpy as np
 import yaml
 
 # set up logger
@@ -56,7 +58,8 @@ def build_page_list3(pdf_in) -> dict:
         # if pages in batch is a multiple of the expected number
         assessment_page_dict = process_expected(batch_of_files)
     else:
-        assessment_page_dict = process_unexpected(batch_of_files)
+        assessment_page_dict = process_unexpected(batch_of_files,
+                                                  pdf_in=pdf_in)
         
     return assessment_page_dict
 
@@ -131,16 +134,24 @@ def build_page_assessment_dict(batch_of_files) -> dict:
 
 def get_assessment_from_user(page,
                              expected_assessment=None,
-                             maybe_assessment=None) -> str:
+                             maybe_assessment=None,
+                             hint=None,
+                             pdf_in=None) -> str:
+    if not hint:
+        hint = ''
+
     if expected_assessment:
-        print(f'Trouble on page {page}. Expected {expected_assessment}.')
+        print(f'Trouble on page {page}. Probably it is {expected_assessment}.')
         default_ans = expected_assessment
     elif maybe_assessment:
-        print(f'Trouble on page {page}. Maybe {maybe_assessment}.')
+        print(f'Trouble on page {page}. {hint} Maybe it is {maybe_assessment}.')
         default_ans = maybe_assessment
     else:
         default_ans = []
         print(f'Trouble on page {page}. No guess.')
+
+    # open pdf to help user
+    open_pdf_at_page(pdf_in, page)
 
     assessment_string = []
     while not assessment_string:
@@ -178,7 +189,7 @@ def get_assessment_from_ocr(ocr_text) -> str:
     return ass_number
 
 
-def process_unexpected(batch_of_files) -> dict:
+def process_unexpected(batch_of_files, pdf_in) -> dict:
     
     n_pages_expected_per_student = len(ASS_LIST)
     n_pages_in_this_batch = len(batch_of_files)
@@ -192,13 +203,35 @@ def process_unexpected(batch_of_files) -> dict:
     
     # look for errors
     for key, val in page_ass_dict.items():
-        if val is None:
-            if key-1 in page_ass_dict:
-                maybe = page_ass_dict[key-1]
-                page_ass_dict[key] = (
-                    get_assessment_from_user(key, maybe_assessment=maybe))
-            else:
-                page_ass_dict[key] = get_assessment_from_user(key)
+        if val is not None:
+            continue
+
+        prev_ass_idx = np.nan  # invalid values
+        next_ass_idx = np.nan
+        if key - 1 in page_ass_dict:
+            prev_ass_idx = ASS_LIST.index(page_ass_dict[key - 1])
+        if key + 1 in page_ass_dict:
+            next_ass_idx = ASS_LIST.index(page_ass_dict[key + 1])
+
+        # calculate how far away the indices are using mod to wrap around
+        diff = (next_ass_idx - prev_ass_idx) % len(ASS_LIST)
+        if diff == 2:
+            # it looks like a scratch out (between prev and next)
+            maybe = ASS_LIST[prev_ass_idx + 1]
+            hint = 'It looks like a scratch out.'
+        elif diff == 1:
+            # it looks like an extra page (same as prev)
+            maybe = ASS_LIST[prev_ass_idx]
+            hint = 'It looks like an extra page.'
+        else:
+            maybe = None
+            hint = 'No guess.'
+
+        page_ass_dict[key] = (
+            get_assessment_from_user(key,
+                                     maybe_assessment=maybe,
+                                     hint=hint,
+                                     pdf_in=pdf_in))
 
     logging.debug(page_ass_dict)
     flipped = flip_dictionary(page_ass_dict)
@@ -318,6 +351,29 @@ def summarize(pdf_in):
     logging.info(x.stdout.decode('utf-8'))
     return x    
     
+
+def open_pdf_at_page(pdf_name: Path | str, page: int) -> None:
+    """
+    Open pdf at given page number.
+
+    :param pdf_name: name of pdf file
+    :type pdf_name: pathlib.Path | str
+    :param page: the page to open
+    :type page: int
+    :returns: None
+    """
+
+    module_path = Path(__file__).parent
+    scripty = module_path / 'open_pdf_to_page.scpt'
+    pdf_full_path = Path(pdf_name)
+    x = subprocess.run(['osascript',
+                        scripty.resolve(),
+                        pdf_full_path.resolve(),
+                        f'{int(page)}'])
+    x.check_returncode()
+
+    return
+
 
 def main(this_item) -> None:
             

@@ -209,9 +209,11 @@ def process_unexpected(batch_of_files, pdf_in) -> dict:
         prev_ass_idx = np.nan  # invalid values
         next_ass_idx = np.nan
         if key - 1 in page_ass_dict:
-            prev_ass_idx = ASS_LIST.index(page_ass_dict[key - 1])
+            if page_ass_dict[key - 1] in ASS_LIST:
+                prev_ass_idx = ASS_LIST.index(page_ass_dict[key - 1])
         if key + 1 in page_ass_dict:
-            next_ass_idx = ASS_LIST.index(page_ass_dict[key + 1])
+            if page_ass_dict[key + 1] in ASS_LIST:
+                next_ass_idx = ASS_LIST.index(page_ass_dict[key + 1])
 
         # calculate how far away the indices are using mod to wrap around
         diff = (next_ass_idx - prev_ass_idx) % len(ASS_LIST)
@@ -347,7 +349,8 @@ def summarize(pdf_in):
     cmd = module_path / 'summarize.sh'
     if cmd.exists():
         logging.debug(f'found summarize.sh at {cmd}')
-    x = subprocess.run([cmd, len(ASS_LIST), pdf_in], stdout=subprocess.PIPE)
+    x = subprocess.run([cmd, f'{len(ASS_LIST)}', pdf_in],
+                       stdout=subprocess.PIPE)
     logging.info(x.stdout.decode('utf-8'))
     return x    
     

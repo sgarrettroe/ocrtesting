@@ -347,7 +347,7 @@ def summarize(pdf_in):
     cmd = module_path / 'summarize.sh'
     if cmd.exists():
         logging.debug(f'found summarize.sh at {cmd}')
-    x = subprocess.run([cmd, pdf_in], stdout=subprocess.PIPE)
+    x = subprocess.run([cmd, len(ASS_LIST), pdf_in], stdout=subprocess.PIPE)
     logging.info(x.stdout.decode('utf-8'))
     return x    
     

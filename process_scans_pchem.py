@@ -6,6 +6,7 @@ import logging
 import re  # regular expressions
 from string import Template  # used in annotations
 from subprocess import CompletedProcess
+import yaml
 
 # set up logger
 logger = logging.getLogger()
@@ -128,13 +129,23 @@ def build_page_assessment_dict(batch_of_files) -> dict:
     return page_ass_dict
 
 
-def get_assessment_from_user(page, expected_assessment=None) -> str:
-    if expected_assessment is None:
-        expected_assessment = []
-    print(f'Trouble on page {page}. Expected {expected_assessment}.')
+def get_assessment_from_user(page,
+                             expected_assessment=None,
+                             maybe_assessment=None) -> str:
+    if expected_assessment:
+        print(f'Trouble on page {page}. Expected {expected_assessment}.')
+        default_ans = expected_assessment
+    elif maybe_assessment:
+        print(f'Trouble on page {page}. Maybe {maybe_assessment}.')
+        default_ans = maybe_assessment
+    else:
+        default_ans = []
+        print(f'Trouble on page {page}. No guess.')
+
     assessment_string = []
     while not assessment_string:
-        val = input('What is the assessment number:\n')
+        prompt = f'What is the assessment number [{default_ans}]:\n'
+        val = input(prompt).strip() or default_ans
         if val in ASS_LIST:
             assessment_string = val
         else:
@@ -147,15 +158,15 @@ def get_assessment_from_ocr(ocr_text) -> str:
     # search for assessment by "Assessment 3.2a" template
     # seem to get a lot of extra .'s or \'s and 1 often reads as l
     # m as n, extra ` or ', e as a, . as :
-    pattern = r'(?<=[mn][eaé]nt )[\dl]+[a-z]'
+    pattern = r'(?<=[mn][eaé]nt )[\dlIi]+[a-z]'
     m = re.search(pattern, ocr_text)
     if not m:
         # see if there is an extra . \ ' ` , 
-        pattern = r"(?<=[mn][eaé]nt [\.\\\'\`,])[\dl]+[a-z]"
+        pattern = r"(?<=[mn][eaé]nt [\.\\\'\`,])[\dlIi]+[a-z]"
         m = re.search(pattern, ocr_text)
     if not m:
         # see if they are before the space
-        pattern = r"(?<=[mn][eaé]nt[\.\\\'\`,] )[\dl]+[a-z]"
+        pattern = r"(?<=[mn][eaé]nt[\.\\\'\`,] )[\dlIi]+[a-z]"
         m = re.search(pattern, ocr_text)
     if m:    
         # hopefully we found something
@@ -173,16 +184,21 @@ def process_unexpected(batch_of_files) -> dict:
     n_pages_in_this_batch = len(batch_of_files)
     n_students_guess = n_pages_in_this_batch // n_pages_expected_per_student
     remainder = n_pages_in_this_batch % n_pages_expected_per_student
-    logging.warning(['\t... did NOT get the expected number of pages. \n',
+    logging.warning(('\t... did NOT get the expected number of pages. \n',
                      f'Got ({n_pages_in_this_batch}) for {n_students_guess}',
-                     f'students with {remainder} left over'])
+                     f'students with {remainder} left over'))
 
     page_ass_dict = build_page_assessment_dict(batch_of_files)
     
     # look for errors
     for key, val in page_ass_dict.items():
         if val is None:
-            page_ass_dict[key] = get_assessment_from_user(key)
+            if key-1 in page_ass_dict:
+                maybe = page_ass_dict[key-1]
+                page_ass_dict[key] = (
+                    get_assessment_from_user(key, maybe_assessment=maybe))
+            else:
+                page_ass_dict[key] = get_assessment_from_user(key)
 
     logging.debug(page_ass_dict)
     flipped = flip_dictionary(page_ass_dict)
@@ -293,7 +309,12 @@ def cleanup(pdf_in):
 
 def summarize(pdf_in):
     # https://stackoverflow.com/questions/4826485/ghostscript-pdf-total-pages
-    x = subprocess.run(['./summarize.sh', pdf_in], stdout=subprocess.PIPE)
+
+    module_path = Path(__file__).parent
+    cmd = module_path / 'summarize.sh'
+    if cmd.exists():
+        logging.debug(f'found summarize.sh at {cmd}')
+    x = subprocess.run([cmd, pdf_in], stdout=subprocess.PIPE)
     logging.info(x.stdout.decode('utf-8'))
     return x    
     
@@ -315,6 +336,18 @@ def main(this_item) -> None:
 if __name__ == '__main__':
     """Process pdf scans to separate assessment files"""
     logging.info(f'Arguments in ({len(sys.argv)}): {sys.argv}')
+
+    config_file_name = 'assessments.yaml'
+    config_file_path = Path(config_file_name)
+    if config_file_path.exists():
+        logging.debug(f'Found config file ({config_file_name})...')
+        with open(config_file_path, 'r') as stream:
+            yaml_content = yaml.load(stream, Loader=yaml.CLoader)
+        ASS_LIST = yaml_content['assessments']
+    else:
+        logging.debug(f'Found no config file, using defaults...')
+
+    logging.info(f'... assessment list ({ASS_LIST})')
 
     for item in sys.argv[1:]:
         if not os.path.exists(item):

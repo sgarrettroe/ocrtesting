@@ -56,7 +56,8 @@ def build_page_list3(pdf_in) -> dict:
     n_pages_in_this_batch = len(batch_of_files)
     if n_pages_in_this_batch % n_pages_expected_per_student == 0:
         # if pages in batch is a multiple of the expected number
-        assessment_page_dict = process_expected(batch_of_files)
+        assessment_page_dict = process_expected(batch_of_files,
+                                                pdf_in=pdf_in)
     else:
         assessment_page_dict = process_unexpected(batch_of_files,
                                                   pdf_in=pdf_in)
@@ -64,7 +65,7 @@ def build_page_list3(pdf_in) -> dict:
     return assessment_page_dict
 
 
-def process_expected(batch_of_files) -> dict:
+def process_expected(batch_of_files, pdf_in) -> dict:
 
     # (note int divide "//" )
     n_pages_expected_per_student = len(ASS_LIST)
@@ -96,10 +97,14 @@ def process_expected(batch_of_files) -> dict:
                     flag_ok_test2 = False
             flag_ok = flag_ok_test1 and flag_ok_test2
             if flag_ok:
-                logging.debug(f'Guessing that page {key} is assessment {expected_dict[key]}')
+                logging.debug(
+                    f'Guessing that page {key} is assessment '
+                    f'{expected_dict[key]}')
                 page_ass_dict[key] = expected_dict[key]
             else:
-                page_ass_dict[key] = get_assessment_from_user(key, expected_dict[key])
+                page_ass_dict[key] = get_assessment_from_user(key,
+                                                              expected_dict[key],
+                                                              pdf_in=pdf_in)
                 
     logging.debug(page_ass_dict)
     flipped = flip_dictionary(page_ass_dict)
@@ -368,12 +373,18 @@ def open_pdf_at_page(pdf_name: Path | str, page: int) -> None:
 
     module_path = Path(__file__).parent
     scripty = module_path / 'open_pdf_to_page.scpt'
+    if pdf_name is None:
+        logging.warning(f'Input pdf_name is None.')
+        return
     pdf_full_path = Path(pdf_name)
-    x = subprocess.run(['osascript',
-                        scripty.resolve(),
-                        pdf_full_path.resolve(),
-                        f'{int(page)}'])
-    x.check_returncode()
+    if pdf_full_path.exists():
+        x = subprocess.run(['osascript',
+                            scripty.resolve(),
+                            pdf_full_path.resolve(),
+                            f'{int(page)}'])
+        x.check_returncode()
+    else:
+        logging.warning(f'No pdf named {pdf_full_path} found.')
 
     return
 

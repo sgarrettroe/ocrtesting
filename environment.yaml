@@ -17,5 +17,6 @@ dependencies:
     - python=3.11
     - numpy
     - pyyaml
+    - pypdf
     - pip
     - pip:

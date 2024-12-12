@@ -2,12 +2,12 @@ import subprocess
 import sys
 import os
 # import glob
-from pathlib import Path  # for sorting paths below (supercedes glob)
+from pathlib import Path  # for sorting paths below (supersedes glob)
 import logging
 import re
 from string import Template  # used in annotations
 from pprint import pprint
-
+import yaml
 #import yaml  ## why not working!?!?! ToDo: fix pyyaml install
 
 # set up logger
@@ -353,12 +353,13 @@ def main() -> None:
 
     cfg_file_name = sys.argv[1]
     logger.debug(f'Config file {cfg_file_name}')
-    # stream = open(cfg_file_name, 'r')
-    # yaml_content = yaml.load(stream, Loader=yaml.CLoader)
-    # logger.debug(yaml_content)
-    ASSLIST = ['5.1', '5.1', '1.1', '1.2', '1.3', '2.1', '2.2', '2.3', '3.1',
-               '3.2', '3.3', '4.1', '4.2', '4.3']
-    #ASSLIST = yaml_content['assessment_list']
+    stream = open(cfg_file_name, 'r')
+    yaml_content = yaml.load(stream, Loader=yaml.CLoader)
+    logger.debug(yaml_content)
+    # ASSLIST = ['5.1', '5.1', '1.1', '1.2', '1.3', '2.1', '2.2', '2.3', '3.1',
+    #            '3.2', '3.3', '4.1', '4.2', '4.3']
+    ASSLIST = yaml_content['assessment_list']
+    logger.debug(f'Found assessment list: {ASSLIST}')
 
     for item in sys.argv[2:]:
         if not os.path.exists(item):

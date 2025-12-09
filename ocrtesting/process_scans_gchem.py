@@ -8,6 +8,7 @@ import re
 from string import Template  # used in annotations
 from pprint import pprint
 import yaml
+import pypdf
 #import yaml  ## why not working!?!?! ToDo: fix pyyaml install
 
 # set up logger
@@ -72,6 +73,7 @@ def buildpagelist3(pdfin) -> dict:
 
     # oldassnumber = '5.1' #first page
     # oldpagenumber = 0
+    # batch_of_files = sorted(Path('..').glob(f'crop_{pdfin}-*.txt'))
     batch_of_files = sorted(Path('.').glob(f'crop_{pdfin}-*.txt'))
     n_pages_expected_per_student = len(ASSLIST)
     n_pages_in_this_batch = len(batch_of_files)
@@ -89,9 +91,11 @@ def process_expected(batch_of_files) -> dict:
     n_pages_expected_per_student = len(ASSLIST)
     n_pages_in_this_batch = len(batch_of_files)
     n_students_guess = n_pages_in_this_batch // n_pages_expected_per_student
-    logging.debug(f'\t... got the expected number of pages \
-                      ({n_pages_in_this_batch}) for {n_students_guess} \
-                      students')
+    logging.debug(
+        f'\t... got the expected number of pages '
+        '({n_pages_in_this_batch}) for {n_students_guess} '
+        'students'
+    )
 
     page_guess = [x + 1 + y * n_pages_expected_per_student
                   for y in range(n_students_guess)
@@ -341,8 +345,12 @@ def cleanup(pdfin):
 
 def summarize(pdfin):
     # https://stackoverflow.com/questions/4826485/ghostscript-pdf-total-pages
-    x = subprocess.run([f'{sys.path[0]}/summarize.sh', pdfin], stdout=subprocess.PIPE)
-    logging.info(x.stdout.decode('utf-8'))
+    # x = subprocess.run([f'{sys.path[0]}/summarize.sh', pdfin], stdout=subprocess.PIPE)
+    # logging.info(x.stdout.decode('utf-8'))
+    with open(pdfin, 'rb') as fp:
+        pdf = pypdf.PdfReader(fp)
+        x = pdf.get_num_pages()
+
     return x
 
 

@@ -1,0 +1,132 @@
+[build-system]
+requires = ["setuptools>=61.0", "versioningit~=2.0"]
+build-backend = "setuptools.build_meta"
+
+# Self-descriptive entries which should always be present
+# https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
+[project]
+name = "ocrtesting"
+description = "Process scans for growth-oriented testing"
+dynamic = ["version"]
+readme = "README.md"
+authors = [
+    { name = "Sean Garrett-Roe", email = "sgr@pitt.edu" },
+]
+license = { text = "MIT" }
+# See https://pypi.org/classifiers/
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Development Status :: 2 - Pre-Alpha",
+    "Framework :: Sphinx",
+    "Framework :: Sphinx :: Extension",
+    "Intended Audience :: Education",
+]
+requires-python = ">=3.11,<3.12"
+# Declare any run-time dependencies that should be installed with the package.
+dependencies = [
+    "numpy",
+    "pyyaml",
+    "pypdf",
+]
+
+# Update the urls once the hosting is set up.
+[project.urls]
+"Source" = "https://github.com/sgarrettroe/ocrtesting/"
+
+[project.scripts]
+ocr-gchem = "ocrtesting.process_scans_gchem:main"
+ocr-pchem = "ocrtesting.process_scans_pchem:main"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=6.1.2",
+]
+
+[tool.setuptools]
+# This subkey is a beta stage development and keys may change in the future, see https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html for more details
+#
+# As of version 0.971, mypy does not support type checking of installed zipped
+# packages (because it does not actually import the Python packages).
+# We declare the package not-zip-safe so that our type hints are also available
+# when checking client code that uses our (installed) package.
+# Ref:
+# https://mypy.readthedocs.io/en/stable/installed_packages.html?highlight=zip#using-installed-packages-with-mypy-pep-561
+zip-safe = false
+# Let setuptools discover the package in the current directory,
+# but be explicit about non-Python files.
+# See also:
+#   https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#setuptools-specific-configuration
+# Note that behavior is currently evolving with respect to how to interpret the
+# "data" and "tests" subdirectories. As of setuptools 63, both are automatically
+# included if namespaces is true (default), even if the package is named explicitly
+# (instead of using 'find'). With 'find', the 'tests' subpackage is discovered
+# recursively because of its __init__.py file, but the data subdirectory is excluded
+# with include-package-data = false and namespaces = false.
+include-package-data = true
+[tool.setuptools.packages.find]
+namespaces = true
+where = ["."]
+
+# Ref https://setuptools.pypa.io/en/latest/userguide/datafiles.html#package-data
+[tool.setuptools.package-data]
+growth_oriented_testing = [
+    "py.typed"
+]
+
+[tool.versioningit]
+default-version = "1+unknown"
+
+[tool.versioningit.format]
+distance = "{base_version}+{distance}.{vcs}{rev}"
+dirty = "{base_version}+{distance}.{vcs}{rev}.dirty"
+distance-dirty = "{base_version}+{distance}.{vcs}{rev}.dirty"
+
+[tool.versioningit.vcs]
+# The method key:
+method = "git"  # <- The method name
+# Parameters to pass to the method:
+match = ["*"]
+default-tag = "1.0.0"
+
+[tool.versioningit.write]
+file = "ocrtesting/_version.py"
+
+[tool.pytest.ini_options]
+addopts = "--cov=ocrtesting --cov-branch --cov-report=term-missing"
+
+[tool.flake8]
+# Check that this is aligned with your other tools like Black
+max-line-length = 88
+max-complexity = 15
+exclude = [
+    # No need to traverse our git directory
+    ".git",
+    # There's no value in checking cache directories
+    "__pycache__"
+]
+# Use extend-ignore to add to already ignored checks which are anti-patterns like W503.
+extend-ignore = [
+    # PEP 8 recommends to treat : in slices as a binary operator with the lowest priority, and to leave an equal
+    # amount of space on either side, except if a parameter is omitted (e.g. ham[1 + 1 :]).
+    # This behaviour may raise E203 whitespace before ':' warnings in style guide enforcement tools like Flake8.
+    # Since E203 is not PEP 8 compliant, we tell Flake8 to ignore this warning.
+    # https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html#slices
+    "E203",
+    "W291", # trailing whitespace
+    "E501", # line too long (if black didn't change it, move on)
+]
+
+[tool.mypy]
+exclude = '''(?x)(
+    _test\.pyi$  # or files ending with "_test.pyi"
+    | ^test_   # or files starting with "test_"
+)'''  # TOML's single-quoted strings do not require escaping backslashes
+
+[tool.ruff.lint]
+select = [
+    "F", "B", "I", "E4", "E7", "E9", "PERF", "C4", "FURB", "SIM", "ERA001",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"

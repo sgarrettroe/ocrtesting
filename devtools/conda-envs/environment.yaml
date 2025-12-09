@@ -2,13 +2,13 @@
 # conda can recreate the environment systematically
 #
 # call with
-# (base) ... % conda env create -f environment.yaml
+# (base) ... % conda env create -f devtools/conda-envs/environment.yaml
 #
 # remove with
 # (base) ... % conda remove --name ocrtesting --all
 #
 # update environment and remove unused dependencies with
-# (base) ... % conda env update -f environment.yaml --prune 
+# (base) ... % conda env update -f devtools/conda-envs/environment.yaml --prune
 #
 # Hint: make sure all keys use spaces not tabs. Check for \t if there is a conda error.
 ---
@@ -20,3 +20,4 @@ dependencies:
     - pypdf
     - pip
     - pip:
+        - --editable .

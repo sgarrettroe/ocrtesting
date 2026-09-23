@@ -20,6 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # git describe needs tag history; shallow clones can't see tags.
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -31,6 +34,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install sphinx pydata-sphinx-theme sphinx-design sphinx-copybutton
           pip install -e .
+
+      # Stamps the splitter app's footer with the nearest git tag (plus
+      # commit count/SHA if not exactly on a tag). Must run before the
+      # Sphinx build, since html_extra_path copies this file verbatim.
+      - name: Stamp splitter app build version
+        run: |
+          VERSION=$(git describe --tags --always --dirty)
+          sed -i "s#__BUILD_VERSION__#${VERSION}#" docs/source/_extra/splitter/index.html
 
       - name: Build Sphinx docs
         run: |

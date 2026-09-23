@@ -30,6 +30,60 @@ bottom-right) encoding the assessment ID. The workflow is:
 4. Review any pages flagged for manual override, then download the split
    PDFs as a ZIP
 
+Example configuration file
+--------------------------
+
+Configuration files are in `yaml`, one variable `assessment_list` set
+to an array (dashes are convenient but not required, [ ... ] would work, too).
+Note, no leading 'A'. Just the number of the Knowledge
+Focus, which may have a dot for Unit.KF format, e.g., 5.1. Just numbering,
+e.g., 1, also works.)
+
+.. warning::
+
+    Need to test if the letters should be included or not!
+    This hasn't been re-verified recently.
+
+In Unit.KF format, e.g., General Chemistry,
+
+.. code-block:: yaml
+
+    assessment_list:
+          - '5.1'  # two page assessment (front/back)
+          - '5.1'
+          - '1.1'  # the rest are one pagers
+          - '1.2'
+          - '1.3'
+          - '2.1'
+          - '2.2'
+          - '2.3'
+          - '3.1'
+          - '3.2'
+          - '3.3'
+          - '4.1'
+          - '4.2'
+          - '4.3'
+
+In KF format, e.g., Physical Chemistry,
+
+.. code-block:: yaml
+
+    assessment_list:
+          - '11'
+          - '10'
+          - '9'
+          - '8'
+          - '7'
+          - '6'
+          - '5'
+          - '4'
+          - '3'
+          - '2'
+          - '1'
+          - '0'
+
+
+
 Related resources
 -----------------
 

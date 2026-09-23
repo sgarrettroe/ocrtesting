@@ -9,7 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <style>
   :root {
     --bg: #f5f3ee;
@@ -45,6 +45,26 @@
   .container { max-width: 860px; margin: 0 auto; }
 
   header { margin-bottom: 2.5rem; }
+  header .doc-link-wrap { margin-top: 0.75rem; }
+  .doc-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    color: var(--accent);
+    background: var(--accent-light);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius);
+    padding: 0.4rem 0.85rem;
+    text-decoration: none;
+    font-family: var(--font-body);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .doc-link:hover {
+    background: #ddefe5;
+    border-color: var(--accent);
+  }
+  .doc-link svg { flex-shrink: 0; }
   header h1 {
     font-family: var(--font-display);
     font-size: 2rem;
@@ -267,6 +287,15 @@
   <header>
     <h1>Assessment Splitter</h1>
     <p>Upload a configuration file, then a scanned PDF to extract and split assessments by QR code.</p>
+    <div class="doc-link-wrap">
+      <a class="doc-link" href="../splitter.html">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+        </svg>
+        Read the documentation
+      </a>
+    </div>
   </header>
 
   <div class="steps">
@@ -350,17 +379,28 @@
     </div>
 
   </div>
+
+  <footer style="margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--border);font-size:0.75rem;color:var(--text-dim);text-align:center;font-family:'Courier New',monospace;">
+    Build: <strong id="build-version">__BUILD_VERSION__</strong>
+  </footer>
 </div>
 
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-let configData = null;      // { sequence: ['A5.1a_v3', 'A5.1a_v3', 'A1.1_v3', ...], uniqueIds: [...], pageCounts: {id: n} }
+let configData = null;      // { sequence: [...], uniqueIds: [...], pageCounts: {id: n} }
 let pdfBytes = null;
 let pdfFileName = '';
 let pageAssignments = [];   // index = page (0-based), value = id string or null
 let scanDone = false;
 let validationPassed = false;
+
+// Normalize an ID for comparison: lowercase, trim, collapse all whitespace.
+// Used to match QR-decoded values against the YAML config regardless of
+// how the LaTeX qrcode package handled spaces in the source.
+function normalizeId(s) {
+  return String(s || '').toLowerCase().replace(/\s+/g, '').trim();
+}
 
 // ── Drag & drop helpers ──────────────────────────────────────────────────────
 function setupDrop(zoneId, inputId, accept, handler) {
@@ -388,12 +428,19 @@ function loadConfig(file) {
       const list = raw.assessment_list || raw;
       if (!Array.isArray(list)) throw new Error('Expected a list under assessment_list');
 
-      // Build sequence and page-count map
+      // Build sequence and page-count map.
+      // We track BOTH the display id (as written in the YAML, used for filenames
+      // and UI) and the normalized id (used for matching QR-decoded values).
       const sequence = list.map(x => String(x).trim());
       const pageCounts = {};
       sequence.forEach(id => { pageCounts[id] = (pageCounts[id] || 0) + 1; });
       const uniqueIds = Object.keys(pageCounts);
-      configData = { sequence, pageCounts, uniqueIds };
+
+      // normalized -> display id, for fast QR matching
+      const normToDisplay = {};
+      uniqueIds.forEach(id => { normToDisplay[normalizeId(id)] = id; });
+
+      configData = { sequence, pageCounts, uniqueIds, normToDisplay };
 
       renderConfigPreview(file.name);
       setStepDone(1);
@@ -440,7 +487,7 @@ function loadPDF(file) {
   pdfFileName = file.name.replace(/\.pdf$/i, '');
   const reader = new FileReader();
   reader.onload = e => {
-    pdfBytes = new Uint8Array(e.target.result);
+    pdfBytes = e.target.result; // keep as ArrayBuffer — pdf.js requires it
     const el = document.getElementById('pdf-info');
     el.innerHTML = `<div class="alert alert-info" style="margin-top:0.75rem">
       <strong>${file.name}</strong> loaded (${(file.size/1024/1024).toFixed(1)} MB). Ready to scan.
@@ -467,8 +514,25 @@ async function startScan() {
   log.style.display = 'block';
   log.innerHTML = '';
 
-  const pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
-  const totalPages = pdfDoc.numPages;
+  let pdfDoc, totalPages;
+  try {
+    console.log('[scan] Calling getDocument...');
+    const loadingTask = pdfjsLib.getDocument({ data: pdfBytes.slice(0) });
+    const docTimeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('getDocument timed out after 10s — likely a pdf.js worker problem')), 10000)
+    );
+    pdfDoc = await Promise.race([loadingTask.promise, docTimeout]);
+    totalPages = pdfDoc.numPages;
+    console.log('[scan] Document loaded:', totalPages, 'pages');
+  } catch (err) {
+    console.error('[scan] Failed to open PDF:', err);
+    document.getElementById('scan-results').innerHTML =
+      `<div class="alert alert-error"><strong>Could not open PDF:</strong> ${err.message}<br>
+       <small>Open the browser console (F12) for details.</small></div>`;
+    document.getElementById('scan-results').style.display = 'block';
+    document.getElementById('btn-scan').disabled = false;
+    return;
+  }
   pageAssignments = new Array(totalPages).fill(null);
 
   const packetSize = configData.sequence.length;
@@ -491,54 +555,150 @@ async function startScan() {
 
   // Scan each page
   const thumbs = {};  // page -> ImageData (for overrides)
-  const SCALE = 1.5;
+  // SCALE controls the page render resolution. 1.2 reads bottom QRs reliably
+  // and is fast. The top header QR is borderline at this scale, so the UC
+  // region uses its own higher-resolution render below.
+  const SCALE = 1.2;
+  // UC_SCALE — used only for re-rendering the top header band at higher
+  // resolution so jsQR can read the top QR reliably. UC is shallow (~25% of
+  // page height) so even a 2x bump is cheap.
+  const UC_SCALE = 2.4;
   const offscreen = document.createElement('canvas');
   const ctx = offscreen.getContext('2d');
+  // Separate canvas for the high-res UC render
+  const ucCanvas = document.createElement('canvas');
+  const ucCtx = ucCanvas.getContext('2d');
+
+  // Render one page to canvas with a timeout so a hang surfaces as an error
+  const renderPage = (page, canvas, ctx, scale) => {
+    const vp = page.getViewport({ scale });
+    canvas.width = vp.width;
+    canvas.height = vp.height;
+    const renderTask = page.render({ canvasContext: ctx, viewport: vp });
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => { renderTask.cancel(); reject(new Error('Render timed out')); }, 15000)
+    );
+    return Promise.race([renderTask.promise, timeout]);
+  };
 
   for (let i = 0; i < totalPages; i++) {
-    const page = await pdfDoc.getPage(i + 1);
-    const vp = page.getViewport({ scale: SCALE });
-    offscreen.width = vp.width;
-    offscreen.height = vp.height;
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    // Yield to browser so progress label and bar actually paint
+    await new Promise(r => setTimeout(r, 0));
 
-    const imageData = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height);
+    document.getElementById('scan-label').textContent = `Scanning page ${i+1} of ${totalPages}…`;
+    document.getElementById('progress-bar').style.width = Math.round(i / totalPages * 100) + '%';
 
-    if (code) {
-      pageAssignments[i] = code.data.trim();
-      logLine(`Page ${i+1}: QR = "${code.data.trim()}"`);
-    } else {
-      // Try scanning quadrants for redundancy
-      let found = null;
-      const hw = Math.floor(offscreen.width / 2), hh = Math.floor(offscreen.height / 2);
-      const quads = [[0,0,hw,hh],[hw,0,hw,hh],[0,hh,hw,hh],[hw,hh,hw,hh]];
-      for (const [x,y,w,h] of quads) {
-        const qd = ctx.getImageData(x, y, w, h);
-        const qr = jsQR(qd.data, w, h);
-        if (qr) { found = qr.data.trim(); break; }
-      }
-      if (found) {
-        pageAssignments[i] = found;
-        logLine(`Page ${i+1}: QR = "${found}" (quadrant scan)`);
-      } else {
-        pageAssignments[i] = null;
-        logLine(`Page ${i+1}: ⚠ QR not detected`);
-        // Store small thumb for override UI
-        const tc = document.createElement('canvas');
-        const tr = 0.25;
-        tc.width = Math.round(offscreen.width * tr);
-        tc.height = Math.round(offscreen.height * tr);
-        tc.getContext('2d').drawImage(offscreen, 0, 0, tc.width, tc.height);
-        thumbs[i] = tc;
-      }
+    let page;
+    try {
+      page = await pdfDoc.getPage(i + 1);
+      await renderPage(page, offscreen, ctx, SCALE);
+    } catch (err) {
+      logLine(`Page ${i+1}: ⚠ Render failed (${err.message}) — flagging for override`);
+      pageAssignments[i] = null;
+      const tc = document.createElement('canvas');
+      tc.width = 70; tc.height = 90;
+      tc.getContext('2d').fillText('render err', 4, 50);
+      thumbs[i] = tc;
+      continue;
     }
 
-    const pct = Math.round((i + 1) / totalPages * 100);
-    document.getElementById('progress-bar').style.width = pct + '%';
-    document.getElementById('scan-label').textContent = `Scanning page ${i+1} of ${totalPages}…`;
+    // Helper: resolve a raw QR value to its canonical display ID via normalization.
+    // Returns the display ID if matched, otherwise the original raw string (so the
+    // user can still see what was decoded in the override panel).
+    const resolveId = raw => {
+      const norm = normalizeId(raw);
+      return configData.normToDisplay[norm] || raw.trim();
+    };
+
+    // Regions are tried in order. The loop breaks on the first read that
+    // resolves to a known config ID, so put the most reliable hits first.
+    // The current LaTeX template puts a QR top-left-of-center (caught by UL,
+    // sometimes UC), bottom-left (LL), and bottom-right (LR). The full-page
+    // scan is the slowest and least selective, so it's the last resort.
+    //
+    // Region image slices are computed lazily — getImageData is expensive and
+    // most pages match on the first region, making the others wasted work.
+    const W = offscreen.width, H = offscreen.height;
+    const hw = Math.floor(W / 2), hh = Math.floor(H / 2);
+    // UC region — 70% wide × 25% tall, anchored at the top of the page.
+    // The top QR lives in the header; this region's crop matches the band where
+    // it's expected. UC is rendered at UC_SCALE (higher than SCALE) so the
+    // small header QR has enough pixel density for jsQR to read reliably.
+    const ucGet = async () => {
+      const vp = page.getViewport({ scale: UC_SCALE });
+      // Only render the top 25% of the page — much faster than rendering the
+      // whole page at high resolution. We render to a canvas sized to the full
+      // page viewport, but the render call clips by canvas size when we set
+      // the height to just the header band's portion of the viewport.
+      const fullH = Math.floor(vp.height);
+      const bandH = Math.floor(fullH * 0.25);
+      ucCanvas.width = Math.floor(vp.width);
+      ucCanvas.height = bandH;
+      // Render the page; pdf.js renders from origin (top-left), so the top
+      // band of the page lands in the canvas naturally — anything below the
+      // canvas height is simply not drawn.
+      const renderTask = page.render({ canvasContext: ucCtx, viewport: vp });
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => { renderTask.cancel(); reject(new Error('UC render timed out')); }, 15000)
+      );
+      await Promise.race([renderTask.promise, timeout]);
+      // Crop the centered 70% width band from the rendered top.
+      const ucX = Math.floor(ucCanvas.width * 0.15);
+      const ucW = Math.floor(ucCanvas.width * 0.70);
+      return ucCtx.getImageData(ucX, 0, ucW, bandH);
+    };
+    const regions = [
+      ['UC',   ucGet],
+      ['UL',   () => ctx.getImageData(0, 0, hw, hh)],
+      ['LL',   () => ctx.getImageData(0, hh, hw, hh)],
+      ['LR',   () => ctx.getImageData(hw, hh, hw, hh)],
+      ['UR',   () => ctx.getImageData(hw, 0, hw, hh)],
+      ['full', () => ctx.getImageData(0, 0, W, H)],
+    ];
+
+    let bestRead = null;        // {raw, resolved, region, matched}
+    const allReads = [];        // for diagnostics
+    for (const [name, getImg] of regions) {
+      let img;
+      try {
+        img = await getImg();
+      } catch (err) {
+        logLine(`Page ${i+1}: region ${name} failed (${err.message})`);
+        continue;
+      }
+      const qr = jsQR(img.data, img.width, img.height);
+      if (!qr || !qr.data || qr.data.trim() === '') continue;
+      const raw = qr.data.trim();
+      const resolved = resolveId(raw);
+      const matched = configData.normToDisplay[normalizeId(raw)] !== undefined;
+      allReads.push({ raw, region: name, matched });
+      // First matching read wins; remember any read as fallback.
+      if (matched && !bestRead) {
+        bestRead = { raw, resolved, region: name, matched };
+        break;
+      }
+      if (!bestRead) bestRead = { raw, resolved, region: name, matched };
+    }
+
+    if (bestRead) {
+      pageAssignments[i] = bestRead.resolved;
+      const tag = bestRead.matched ? '' : ' (no config match)';
+      logLine(`Page ${i+1}: QR [${bestRead.region}] = "${bestRead.raw}" → "${bestRead.resolved}"${tag}`);
+    } else {
+      pageAssignments[i] = null;
+      logLine(`Page ${i+1}: ⚠ QR not detected`);
+      // Store small thumb for override UI
+      const tc = document.createElement('canvas');
+      const tr = 0.25;
+      tc.width = Math.round(W * tr);
+      tc.height = Math.round(H * tr);
+      tc.getContext('2d').drawImage(offscreen, 0, 0, tc.width, tc.height);
+      thumbs[i] = tc;
+    }
   }
 
+  document.getElementById('progress-bar').style.width = '100%';
+  document.getElementById('scan-label').textContent = `Scan complete — ${totalPages} pages processed.`;
   scanDone = true;
   renderScanResults(totalPages, numStudents, thumbs);
 }
@@ -696,7 +856,7 @@ async function doDownload() {
   statusEl.style.display = 'block';
 
   try {
-    const srcDoc = await PDFLib.PDFDocument.load(pdfBytes);
+    const srcDoc = await PDFLib.PDFDocument.load(new Uint8Array(pdfBytes));
     const zip = new JSZip();
 
     // Group page indices by ID

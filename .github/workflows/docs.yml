@@ -9,6 +9,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read
 
 concurrency:
   group: pages
@@ -18,27 +19,34 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
       - name: Install docs dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r docs/requirements.txt
+          pip install sphinx pydata-sphinx-theme sphinx-design sphinx-copybutton
+          pip install -e .
 
       - name: Build Sphinx docs
         run: |
           cd docs
           make html
 
+      # Belt-and-suspenders: .nojekyll should already be carried into the
+      # build via html_extra_path (docs/source/_extra/.nojekyll), but this
+      # guarantees it's present even if that ever breaks.
+      - name: Disable Jekyll on Pages
+        run: touch docs/_build/html/.nojekyll
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/build/html
+          path: docs/_build/html
 
   deploy:
     needs: build

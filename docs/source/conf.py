@@ -125,6 +125,10 @@ html_static_path = ["_static"]
 #
 # html_sidebars = {}  # noqa ERA001
 
+# Files copied verbatim to the build root (no Sphinx processing).
+# Used to include the browser-based Assessment Splitter app alongside
+# the docs at /splitter/.
+html_extra_path = ["_extra"]
 
 # -- Options for HTMLHelp output ---------------------------------------------
 

@@ -39,7 +39,7 @@ Welcome to ocrtesting's documentation!
     .. grid-item-card::  Developer Guide
       :margin: 0 3 0 0
       
-      How to contribute to growth_oriented_testing.
+      How to contribute to ocrtesting.
 
       .. button-link:: ./developer_guide.html
          :color: primary
@@ -48,6 +48,18 @@ Welcome to ocrtesting's documentation!
 
          To the Developer Guide
 
+
+    .. grid-item-card::  Splitter Web App
+      :margin: 0 3 0 0
+
+      Web app.
+
+      .. button-link:: ./splitter/index.html
+         :color: primary
+         :outline:
+         :expand:
+
+         To the Web App
 
 .. toctree::
    :maxdepth: 2

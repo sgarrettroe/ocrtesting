@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Assessment Splitter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f3ee;
+    --surface: #ffffff;
+    --surface2: #f0ede6;
+    --border: #d8d4c8;
+    --border-strong: #b8b4a8;
+    --text: #1a1814;
+    --text-muted: #6b6760;
+    --text-dim: #9b9890;
+    --accent: #2d6a4f;
+    --accent-light: #e8f4ee;
+    --accent-border: #74c69d;
+    --warn: #b5451b;
+    --warn-light: #fdf0eb;
+    --warn-border: #f4a273;
+    --info: #1a4a7a;
+    --info-light: #e8f0f8;
+    --info-border: #7ab3e0;
+    --font-display: 'Georgia', 'Times New Roman', serif;
+    --font-body: 'Helvetica Neue', Helvetica, sans-serif;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+  .container { max-width: 860px; margin: 0 auto; }
+
+  header { margin-bottom: 2.5rem; }
+  header h1 {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: normal;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 0.35rem;
+  }
+  header p { font-size: 0.9rem; color: var(--text-muted); }
+
+  .steps { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .step.active { border-color: var(--accent-border); }
+  .step.done { border-color: var(--accent-border); background: var(--accent-light); }
+  .step.error { border-color: var(--warn-border); background: var(--warn-light); }
+
+  .step-header {
+    display: flex; align-items: center; gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .step.active .step-header { border-color: var(--accent-border); }
+  .step.done .step-header { border-color: var(--accent-border); }
+  .step.error .step-header { border-color: var(--warn-border); }
+
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 1.5px solid var(--border-strong);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; font-weight: 600; color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .step.done .step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .step.error .step-num { background: var(--warn); border-color: var(--warn); color: #fff; }
+  .step.active .step-num { border-color: var(--accent); color: var(--accent); }
+
+  .step-title { font-size: 0.95rem; font-weight: 600; }
+  .step-subtitle { font-size: 0.8rem; color: var(--text-muted); margin-top: 1px; }
+
+  .step-body { padding: 1.25rem; }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    background: var(--surface2);
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent);
+    background: var(--accent-light);
+  }
+  .drop-zone .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+  .drop-zone p { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem; }
+  .drop-zone strong { font-size: 0.95rem; color: var(--text); }
+  .drop-zone input[type=file] { display: none; }
+
+  .config-preview {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-top: 0.75rem;
+  }
+  .config-preview .seq { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.5rem; }
+  .config-preview .tag {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.78rem;
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+  }
+  .config-preview .tag.multi { background: var(--accent-light); border-color: var(--accent-border); color: var(--accent); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 0.55rem 1.1rem;
+    border-radius: var(--radius);
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.88rem;
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn:hover { background: var(--surface2); border-color: var(--accent); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: #1f5c3d; border-color: #1f5c3d; }
+
+  .progress-bar-wrap {
+    background: var(--surface2);
+    border-radius: 4px;
+    height: 6px;
+    margin: 0.75rem 0;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+  .progress-label { font-size: 0.8rem; color: var(--text-muted); }
+
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+  }
+  .result-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.7rem 0.85rem;
+    font-size: 0.82rem;
+  }
+  .result-card.ok { border-color: var(--accent-border); background: var(--accent-light); }
+  .result-card.warn { border-color: var(--warn-border); background: var(--warn-light); }
+  .result-card .id { font-family: 'Courier New', monospace; font-weight: 600; font-size: 0.85rem; }
+  .result-card .count { color: var(--text-muted); margin-top: 2px; }
+
+  .alert {
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    margin-top: 0.75rem;
+    border: 1px solid;
+  }
+  .alert-error { background: var(--warn-light); border-color: var(--warn-border); color: var(--warn); }
+  .alert-success { background: var(--accent-light); border-color: var(--accent-border); color: var(--accent); }
+  .alert-info { background: var(--info-light); border-color: var(--info-border); color: var(--info); }
+
+  .override-panel {
+    background: var(--warn-light);
+    border: 1px solid var(--warn-border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-top: 0.75rem;
+  }
+  .override-panel h4 { font-size: 0.88rem; color: var(--warn); margin-bottom: 0.75rem; }
+  .override-item {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--warn-border);
+    flex-wrap: wrap;
+  }
+  .override-item:last-child { border-bottom: none; }
+  .thumb-wrap {
+    width: 70px; height: 90px; flex-shrink: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .thumb-wrap canvas { max-width: 100%; max-height: 100%; }
+  .override-meta { flex: 1; min-width: 140px; }
+  .override-meta .pg { font-size: 0.8rem; color: var(--text-muted); }
+  .override-meta .detected { font-size: 0.78rem; color: var(--warn); margin-top: 2px; }
+  .override-select {
+    padding: 0.35rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-strong);
+    font-size: 0.82rem;
+    background: var(--surface);
+    color: var(--text);
+    min-width: 160px;
+  }
+
+  .validation-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; margin-top: 0.75rem; }
+  .validation-table th {
+    text-align: left; padding: 0.4rem 0.75rem;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-muted); font-weight: 600;
+  }
+  .validation-table td { padding: 0.4rem 0.75rem; border: 1px solid var(--border); }
+  .validation-table tr.fail td { background: var(--warn-light); color: var(--warn); }
+  .validation-table tr.ok td { background: var(--accent-light); }
+
+  .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+  .spacer { margin-top: 0.75rem; }
+
+  #scan-log {
+    font-size: 0.78rem; color: var(--text-muted);
+    font-family: 'Courier New', monospace;
+    max-height: 120px; overflow-y: auto;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.5rem;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Assessment Splitter</h1>
+    <p>Upload a configuration file, then a scanned PDF to extract and split assessments by QR code.</p>
+  </header>
+
+  <div class="steps">
+
+    <!-- STEP 1: Config -->
+    <div class="step active" id="step1">
+      <div class="step-header">
+        <div class="step-num" id="sn1">1</div>
+        <div>
+          <div class="step-title">Upload configuration file</div>
+          <div class="step-subtitle">YAML file listing assessment IDs in page order</div>
+        </div>
+      </div>
+      <div class="step-body">
+        <div class="drop-zone" id="drop-config">
+          <div class="icon">📋</div>
+          <strong>Drop YAML config here</strong>
+          <p>or click to browse</p>
+          <input type="file" id="file-config" accept=".yaml,.yml">
+        </div>
+        <div id="config-preview" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- STEP 2: PDF -->
+    <div class="step" id="step2">
+      <div class="step-header">
+        <div class="step-num" id="sn2">2</div>
+        <div>
+          <div class="step-title">Upload scanned PDF</div>
+          <div class="step-subtitle">Each assessment page must have a QR code encoding its ID</div>
+        </div>
+      </div>
+      <div class="step-body">
+        <div class="drop-zone" id="drop-pdf" style="opacity:0.5;pointer-events:none">
+          <div class="icon">📄</div>
+          <strong>Drop PDF here</strong>
+          <p>or click to browse</p>
+          <input type="file" id="file-pdf" accept=".pdf">
+        </div>
+        <div id="pdf-info" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- STEP 3: Scan & Validate -->
+    <div class="step" id="step3">
+      <div class="step-header">
+        <div class="step-num" id="sn3">3</div>
+        <div>
+          <div class="step-title">Scan &amp; validate</div>
+          <div class="step-subtitle">QR codes detected, page counts verified</div>
+        </div>
+      </div>
+      <div class="step-body" id="step3-body">
+        <button class="btn btn-primary" id="btn-scan" disabled onclick="startScan()">Scan QR codes</button>
+        <div id="scan-progress" style="display:none">
+          <div class="spacer"></div>
+          <div class="progress-label" id="scan-label">Scanning page 0 of 0…</div>
+          <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+          <div id="scan-log"></div>
+        </div>
+        <div id="scan-results" style="display:none"></div>
+        <div id="override-panel" style="display:none"></div>
+        <div id="validation-results" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- STEP 4: Download -->
+    <div class="step" id="step4">
+      <div class="step-header">
+        <div class="step-num" id="sn4">4</div>
+        <div>
+          <div class="step-title">Download split PDFs</div>
+          <div class="step-subtitle">One PDF per assessment ID, bundled as a ZIP</div>
+        </div>
+      </div>
+      <div class="step-body">
+        <button class="btn btn-primary" id="btn-download" disabled onclick="doDownload()">⬇ Download ZIP</button>
+        <div id="download-status" style="display:none"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let configData = null;      // { sequence: ['A5.1a_v3', 'A5.1a_v3', 'A1.1_v3', ...], uniqueIds: [...], pageCounts: {id: n} }
+let pdfBytes = null;
+let pdfFileName = '';
+let pageAssignments = [];   // index = page (0-based), value = id string or null
+let scanDone = false;
+let validationPassed = false;
+
+// ── Drag & drop helpers ──────────────────────────────────────────────────────
+function setupDrop(zoneId, inputId, accept, handler) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { if (input.files[0]) handler(input.files[0]); });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f) handler(f);
+  });
+}
+
+// ── Config loading ────────────────────────────────────────────────────────────
+setupDrop('drop-config', 'file-config', '.yaml,.yml', loadConfig);
+
+function loadConfig(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const raw = jsyaml.load(e.target.result);
+      const list = raw.assessment_list || raw;
+      if (!Array.isArray(list)) throw new Error('Expected a list under assessment_list');
+
+      // Build sequence and page-count map
+      const sequence = list.map(x => String(x).trim());
+      const pageCounts = {};
+      sequence.forEach(id => { pageCounts[id] = (pageCounts[id] || 0) + 1; });
+      const uniqueIds = Object.keys(pageCounts);
+      configData = { sequence, pageCounts, uniqueIds };
+
+      renderConfigPreview(file.name);
+      setStepDone(1);
+      enableStep2();
+    } catch (err) {
+      alert('Could not parse config file:\n' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function renderConfigPreview(fname) {
+  const el = document.getElementById('config-preview');
+  const packetSize = configData.sequence.length;
+  let html = `<div class="config-preview">
+    <strong>${fname}</strong> — ${packetSize} pages per student packet, ${configData.uniqueIds.length} unique assessments
+    <div class="seq">`;
+  // Show sequence with multi-page ones highlighted
+  const seen = {};
+  configData.sequence.forEach(id => {
+    const isMulti = configData.pageCounts[id] > 1;
+    const cls = isMulti ? 'tag multi' : 'tag';
+    const label = isMulti ? `${id} (${configData.pageCounts[id]}pp)` : id;
+    if (!seen[id]) {
+      html += `<span class="${cls}">${label}</span>`;
+      seen[id] = true;
+    }
+  });
+  html += `</div><p style="margin-top:6px;font-size:0.76rem;color:var(--text-dim)">Highlighted = multi-page assessment</p></div>`;
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+// ── PDF loading ───────────────────────────────────────────────────────────────
+function enableStep2() {
+  const zone = document.getElementById('drop-pdf');
+  zone.style.opacity = '1';
+  zone.style.pointerEvents = 'auto';
+  document.getElementById('step2').classList.add('active');
+  setupDrop('drop-pdf', 'file-pdf', '.pdf', loadPDF);
+}
+
+function loadPDF(file) {
+  pdfFileName = file.name.replace(/\.pdf$/i, '');
+  const reader = new FileReader();
+  reader.onload = e => {
+    pdfBytes = new Uint8Array(e.target.result);
+    const el = document.getElementById('pdf-info');
+    el.innerHTML = `<div class="alert alert-info" style="margin-top:0.75rem">
+      <strong>${file.name}</strong> loaded (${(file.size/1024/1024).toFixed(1)} MB). Ready to scan.
+    </div>`;
+    el.style.display = 'block';
+    setStepDone(2);
+    document.getElementById('step3').classList.add('active');
+    document.getElementById('btn-scan').disabled = false;
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── QR Scanning ───────────────────────────────────────────────────────────────
+async function startScan() {
+  document.getElementById('btn-scan').disabled = true;
+  document.getElementById('scan-progress').style.display = 'block';
+  document.getElementById('scan-results').style.display = 'none';
+  document.getElementById('override-panel').style.display = 'none';
+  document.getElementById('validation-results').style.display = 'none';
+  scanDone = false;
+  validationPassed = false;
+
+  const log = document.getElementById('scan-log');
+  log.style.display = 'block';
+  log.innerHTML = '';
+
+  const pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+  const totalPages = pdfDoc.numPages;
+  pageAssignments = new Array(totalPages).fill(null);
+
+  const packetSize = configData.sequence.length;
+  const logLine = msg => { log.innerHTML += msg + '<br>'; log.scrollTop = log.scrollHeight; };
+
+  // Validate total page count
+  if (totalPages % packetSize !== 0) {
+    document.getElementById('scan-results').innerHTML = `
+      <div class="alert alert-error">
+        <strong>Page count error:</strong> PDF has ${totalPages} pages but the packet size is ${packetSize}.
+        ${totalPages} is not divisible by ${packetSize}. Please check the PDF and try again.
+      </div>`;
+    document.getElementById('scan-results').style.display = 'block';
+    document.getElementById('btn-scan').disabled = false;
+    return;
+  }
+
+  const numStudents = totalPages / packetSize;
+  logLine(`PDF has ${totalPages} pages → ${numStudents} student packets`);
+
+  // Scan each page
+  const thumbs = {};  // page -> ImageData (for overrides)
+  const SCALE = 1.5;
+  const offscreen = document.createElement('canvas');
+  const ctx = offscreen.getContext('2d');
+
+  for (let i = 0; i < totalPages; i++) {
+    const page = await pdfDoc.getPage(i + 1);
+    const vp = page.getViewport({ scale: SCALE });
+    offscreen.width = vp.width;
+    offscreen.height = vp.height;
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+    const imageData = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+    if (code) {
+      pageAssignments[i] = code.data.trim();
+      logLine(`Page ${i+1}: QR = "${code.data.trim()}"`);
+    } else {
+      // Try scanning quadrants for redundancy
+      let found = null;
+      const hw = Math.floor(offscreen.width / 2), hh = Math.floor(offscreen.height / 2);
+      const quads = [[0,0,hw,hh],[hw,0,hw,hh],[0,hh,hw,hh],[hw,hh,hw,hh]];
+      for (const [x,y,w,h] of quads) {
+        const qd = ctx.getImageData(x, y, w, h);
+        const qr = jsQR(qd.data, w, h);
+        if (qr) { found = qr.data.trim(); break; }
+      }
+      if (found) {
+        pageAssignments[i] = found;
+        logLine(`Page ${i+1}: QR = "${found}" (quadrant scan)`);
+      } else {
+        pageAssignments[i] = null;
+        logLine(`Page ${i+1}: ⚠ QR not detected`);
+        // Store small thumb for override UI
+        const tc = document.createElement('canvas');
+        const tr = 0.25;
+        tc.width = Math.round(offscreen.width * tr);
+        tc.height = Math.round(offscreen.height * tr);
+        tc.getContext('2d').drawImage(offscreen, 0, 0, tc.width, tc.height);
+        thumbs[i] = tc;
+      }
+    }
+
+    const pct = Math.round((i + 1) / totalPages * 100);
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('scan-label').textContent = `Scanning page ${i+1} of ${totalPages}…`;
+  }
+
+  scanDone = true;
+  renderScanResults(totalPages, numStudents, thumbs);
+}
+
+function renderScanResults(totalPages, numStudents, thumbs) {
+  const failed = pageAssignments.map((v,i) => v === null ? i : null).filter(x => x !== null);
+  const unexpected = pageAssignments.map((v,i) => v !== null && !configData.uniqueIds.includes(v) ? i : null).filter(x => x !== null);
+
+  const sr = document.getElementById('scan-results');
+  let html = `<div class="alert ${failed.length + unexpected.length === 0 ? 'alert-success' : 'alert-error'}" style="margin-top:0.75rem">`;
+  if (failed.length === 0 && unexpected.length === 0) {
+    html += `<strong>All ${totalPages} pages scanned successfully.</strong> ${numStudents} student packets detected.`;
+  } else {
+    html += `<strong>${failed.length} pages failed QR detection</strong>`;
+    if (unexpected.length) html += `, <strong>${unexpected.length} pages returned unknown IDs</strong>`;
+    html += `. Use the override panel below to assign correct IDs.`;
+  }
+  html += `</div>`;
+  sr.innerHTML = html;
+  sr.style.display = 'block';
+
+  // Override panel
+  const problems = [...new Set([...failed, ...unexpected])].sort((a,b)=>a-b);
+  if (problems.length > 0) {
+    renderOverridePanel(problems, thumbs);
+  } else {
+    runValidation();
+  }
+}
+
+function renderOverridePanel(problems, thumbs) {
+  const op = document.getElementById('override-panel');
+  let html = `<div class="override-panel">
+    <h4>Manual override required — ${problems.length} page(s) need assignment</h4>`;
+
+  problems.forEach(i => {
+    const detected = pageAssignments[i];
+    html += `<div class="override-item" data-page="${i}">
+      <div class="thumb-wrap" id="thumb-${i}"></div>
+      <div class="override-meta">
+        <div class="pg">Page ${i+1}</div>
+        <div class="detected">${detected ? `Unknown ID: "${detected}"` : 'QR not detected'}</div>
+      </div>
+      <select class="override-select" id="override-${i}" onchange="applyOverride(${i}, this.value)">
+        <option value="">— select correct ID —</option>
+        ${configData.uniqueIds.map(id => `<option value="${id}"${detected===id?' selected':''}>${id}</option>`).join('')}
+        <option value="__skip__">Skip this page (exclude)</option>
+      </select>
+    </div>`;
+  });
+
+  html += `<div class="spacer row">
+    <button class="btn btn-primary" onclick="applyAllOverrides()">Apply overrides &amp; validate</button>
+    <button class="btn" onclick="runValidation()">Validate as-is</button>
+  </div></div>`;
+
+  op.innerHTML = html;
+  op.style.display = 'block';
+
+  // Render thumbs
+  problems.forEach(i => {
+    const wrap = document.getElementById(`thumb-${i}`);
+    if (thumbs[i]) {
+      wrap.appendChild(thumbs[i]);
+    } else {
+      wrap.innerHTML = `<span style="font-size:0.7rem;color:var(--text-dim)">pg ${i+1}</span>`;
+    }
+  });
+}
+
+function applyOverride(pageIdx, val) {
+  pageAssignments[pageIdx] = val === '__skip__' ? '__skip__' : (val || null);
+}
+
+function applyAllOverrides() {
+  configData.uniqueIds.forEach((_, __) => {}); // noop, already applied via onchange
+  runValidation();
+}
+
+function runValidation() {
+  // Count pages per ID
+  const counts = {};
+  configData.uniqueIds.forEach(id => counts[id] = 0);
+  pageAssignments.forEach(id => {
+    if (id && id !== '__skip__' && counts[id] !== undefined) counts[id]++;
+  });
+
+  // Expected: for numStudents, each id appears pageCounts[id] * numStudents times
+  const totalPages = pageAssignments.length;
+  const packetSize = configData.sequence.length;
+  const numStudents = Math.floor(totalPages / packetSize);
+
+  const rows = configData.uniqueIds.map(id => {
+    const expected = configData.pageCounts[id] * numStudents;
+    const actual = counts[id];
+    const ok = actual === expected;
+    return { id, expected, actual, ok };
+  });
+
+  const allOk = rows.every(r => r.ok);
+  validationPassed = allOk;
+
+  let html = `<div style="margin-top:0.75rem">`;
+  html += `<div class="alert ${allOk ? 'alert-success' : 'alert-error'}">
+    ${allOk
+      ? `<strong>Validation passed.</strong> All page counts match expectations for ${numStudents} students.`
+      : `<strong>Validation failed.</strong> Some page counts do not match. You may proceed anyway or fix overrides.`
+    }
+  </div>`;
+
+  html += `<table class="validation-table">
+    <thead><tr><th>Assessment ID</th><th>Pages/student</th><th>Expected total</th><th>Detected</th><th>Status</th></tr></thead>
+    <tbody>`;
+  rows.forEach(r => {
+    html += `<tr class="${r.ok ? 'ok' : 'fail'}">
+      <td style="font-family:monospace">${r.id}</td>
+      <td>${configData.pageCounts[r.id]}</td>
+      <td>${r.expected}</td>
+      <td>${r.actual}</td>
+      <td>${r.ok ? '✓ OK' : '✗ Mismatch'}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+
+  if (!allOk) {
+    html += `<div class="spacer row">
+      <button class="btn" onclick="document.getElementById('override-panel').style.display='block'">Edit overrides</button>
+      <button class="btn btn-primary" onclick="proceedAnyway()">Proceed anyway</button>
+    </div>`;
+  }
+  html += `</div>`;
+
+  document.getElementById('validation-results').innerHTML = html;
+  document.getElementById('validation-results').style.display = 'block';
+
+  if (allOk) {
+    setStepDone(3);
+    document.getElementById('step4').classList.add('active');
+    document.getElementById('btn-download').disabled = false;
+  }
+}
+
+function proceedAnyway() {
+  validationPassed = true;
+  setStepDone(3);
+  document.getElementById('step4').classList.add('active');
+  document.getElementById('btn-download').disabled = false;
+}
+
+// ── Download ──────────────────────────────────────────────────────────────────
+async function doDownload() {
+  document.getElementById('btn-download').disabled = true;
+  const statusEl = document.getElementById('download-status');
+  statusEl.innerHTML = '<div class="alert alert-info">Building ZIP…</div>';
+  statusEl.style.display = 'block';
+
+  try {
+    const srcDoc = await PDFLib.PDFDocument.load(pdfBytes);
+    const zip = new JSZip();
+
+    // Group page indices by ID
+    const groups = {};
+    configData.uniqueIds.forEach(id => groups[id] = []);
+    pageAssignments.forEach((id, i) => {
+      if (id && id !== '__skip__' && groups[id] !== undefined) {
+        groups[id].push(i);
+      }
+    });
+
+    for (const [id, pages] of Object.entries(groups)) {
+      if (pages.length === 0) continue;
+      const outDoc = await PDFLib.PDFDocument.create();
+      const copied = await outDoc.copyPages(srcDoc, pages);
+      copied.forEach(p => outDoc.addPage(p));
+      const outBytes = await outDoc.save();
+      const safeName = id.replace(/[^a-zA-Z0-9._\-]/g, '_');
+      zip.file(`${safeName}_${pdfFileName}.pdf`, outBytes);
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    saveAs(blob, `${pdfFileName}_split.zip`);
+
+    statusEl.innerHTML = '<div class="alert alert-success"><strong>Download complete!</strong> ZIP file saved.</div>';
+    setStepDone(4);
+  } catch (err) {
+    statusEl.innerHTML = `<div class="alert alert-error"><strong>Error during PDF splitting:</strong> ${err.message}</div>`;
+    document.getElementById('btn-download').disabled = false;
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function setStepDone(n) {
+  const step = document.getElementById(`step${n}`);
+  step.classList.remove('active', 'error');
+  step.classList.add('done');
+  document.getElementById(`sn${n}`).textContent = '✓';
+}
+</script>
+</body>
+</html>

@@ -389,10 +389,10 @@ def open_pdf_at_page(pdf_name: Path | str, page: int) -> None:
     return
 
 
-def main(this_item) -> None:
+def submain(this_item) -> None:
             
     logging.info(f'Processing {this_item}:')
-    summarize(this_item)
+    # summarize(this_item)
     crop_corner(this_item)
     ocr_corner(this_item)
     assessment_dict = build_page_list3(this_item)
@@ -403,24 +403,29 @@ def main(this_item) -> None:
     return None
 
 
-if __name__ == '__main__':
+def main() -> None:
     """Process pdf scans to separate assessment files"""
+    global ASSLIST
     logging.info(f'Arguments in ({len(sys.argv)}): {sys.argv}')
 
-    config_file_name = 'assessments.yaml'
-    config_file_path = Path(config_file_name)
-    if config_file_path.exists():
-        logging.debug(f'Found config file ({config_file_name})...')
-        with open(config_file_path, 'r') as stream:
-            yaml_content = yaml.load(stream, Loader=yaml.CLoader)
-        ASS_LIST = yaml_content['assessments']
-    else:
-        logging.debug(f'Found no config file, using defaults...')
+    cfg_file_name = sys.argv[1]
+    logger.debug(f'Config file {cfg_file_name}')
+    stream = open(cfg_file_name, 'r')
+    yaml_content = yaml.load(stream, Loader=yaml.CLoader)
+    logger.debug(yaml_content)
+    ASSLIST = yaml_content['assessment_list']
+    logger.debug(f'Found assessment list: {ASSLIST}')
 
-    logging.info(f'... assessment list ({ASS_LIST})')
-
-    for item in sys.argv[1:]:
+    for item in sys.argv[2:]:
         if not os.path.exists(item):
             raise FileNotFoundError(f'Cannot locate file {item}.')
-        main(item)
-    sys.exit()
+
+        logging.info(f'Processing {item}:')
+        submain(item)
+        logging.info('\t...done')
+
+    return None
+
+
+if __name__ == '__main__':
+    sys.exit(main())

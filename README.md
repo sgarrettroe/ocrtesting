@@ -1,4 +1,10 @@
-# ocrtesting
+# Web app
+https://sgarrettroe.github.io/ocrtesting
+
+https://sgarrettroe.github.io/ocrtesting/splitter
+
+
+#
 ocr process exams
 
 # notes from earlier
